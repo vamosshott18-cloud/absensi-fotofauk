@@ -49,7 +49,7 @@ function gambarSaya() {
     $("btnGanti").onclick = () => { S.gantiSaya = true; gambarSaya(); };
   } else {
     k.className = "kartu";
-    k.innerHTML = `<div class="langkah"><span>👤</span>Kamu siapa? <span class="opsional" style="font-size:13px;font-weight:normal;color:var(--redup)">diingat di HP ini</span></div>
+    k.innerHTML = `<div class="langkah"><span>👤</span>Kamu siapa? <small style="font-size:13px;font-weight:normal;color:var(--redup)">diingat di HP ini</small></div>
       <div class="chips">${S.daftar.nama.map(n => chip(esc(n), n === S.saya, `data-saya="${esc(n)}"`)).join("")}</div>`;
     k.querySelectorAll("[data-saya]").forEach(b => b.onclick = () => {
       S.saya = b.dataset.saya; S.gantiSaya = false; simpanLokal("af_saya", S.saya); gambarAbsen();
