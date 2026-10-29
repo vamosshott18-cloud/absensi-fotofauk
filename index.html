@@ -113,6 +113,15 @@
   table.rekap td { padding: 9px 4px; border-bottom: 1px solid var(--garis); }
   table.rekap td.n, table.rekap th.n { text-align: right; }
   table.rekap tr.total td { font-weight: bold; border-bottom: 0; }
+  .grafik svg { display: block; width: 100%; height: auto; }
+  .grafik { touch-action: pan-y; }
+  .grid-ramai { display: grid; grid-template-columns: 1fr; gap: 0 12px; }
+  @media (min-width: 640px) { .grid-ramai { grid-template-columns: 1fr 1fr; } }
+  .grid-ramai[hidden] { display: none; }
+  .tabel-lipat summary { cursor: pointer; margin: 0; list-style: none; }
+  .tabel-lipat summary::after { content: " ▾"; }
+  .grafik-tip { position: fixed; z-index: 70; pointer-events: none; opacity: 0; transition: opacity .12s; white-space: pre-line;
+    background: var(--hitam); color: #fff; font-size: 12px; line-height: 1.45; padding: 7px 10px; border-radius: 8px; box-shadow: 0 4px 14px rgba(0,0,0,.2); }
   .ekspor { display: grid; grid-template-columns: repeat(2, 1fr); gap: 8px; }
   .ekspor button { display: flex; align-items: center; gap: 10px; text-align: left; padding: 12px; border-radius: 12px; border: 1.5px solid var(--garis); background: var(--putih); min-height: 60px; }
   .ekspor button b { display: block; font-size: 14px; }
@@ -144,6 +153,18 @@
   .gembok-isi .salah { color: var(--merah); font-weight: bold; margin: 10px 0 0; min-height: 1em; }
   .pin-bar { font-size: 12px; color: var(--redup); display: flex; align-items: center; gap: 6px; margin: -2px 2px 10px; }
   .pin-bar .linkbtn { margin-left: auto; padding: 0; font-size: 12px; }
+  .tanpa-akses .pin-bar { display: none; }
+  .masuk { display: none; position: fixed; inset: 0; z-index: 40; background: var(--bg); padding: 70px 16px 16px; overflow-y: auto; }
+  .belum-masuk .masuk { display: block; }
+  .belum-masuk main, .belum-masuk nav.bawah, .belum-masuk #btnAtur { visibility: hidden; }
+  .masuk .gembok-isi { max-width: 420px; margin: 0 auto; }
+  .ringkas-data { display: flex; gap: 8px; margin: 10px 0 2px; }
+  .ringkas-data:empty { display: none; }
+  .ringkas-data div { flex: 1; background: var(--hitam); color: #fff; border-radius: 12px; padding: 10px 12px; }
+  .ringkas-data b { display: block; font-size: 20px; } .ringkas-data span { font-size: 12px; opacity: .75; }
+  .detail-baris { display: flex; gap: 10px; padding: 8px 0; border-bottom: 1px solid var(--garis); font-size: 14px; }
+  .detail-baris:last-child { border-bottom: 0; }
+  .detail-baris span { width: 90px; color: var(--redup); flex: none; }
 
   /* ---- layar Absen: 3 langkah ---- */
   .langkah { display: flex; align-items: center; gap: 10px; font-size: 17px; font-weight: bold; margin-bottom: 12px; }
@@ -223,7 +244,19 @@
     </button>
   </div>
 </header>
-<div class="pita" id="pitaCoba" hidden>MODE COBA — data hanya di HP/laptop ini · PIN coba: 1234</div>
+<div class="pita" id="pitaCoba" hidden>MODE COBA — data hanya di HP/laptop ini · PIN tim 111111 · admin 123456</div>
+
+<!-- layar masuk: PIN tim -->
+<div class="masuk" id="masuk">
+  <div class="gembok-isi">
+    <img src="ikon-192.png" alt="" width="72" height="72" style="border-radius:16px">
+    <h3>Absensi FotoFauk</h3>
+    <p>Masukkan <b>PIN tim</b> untuk membuka aplikasi. Cukup sekali di HP ini.</p>
+    <input class="isian" id="pinTim" type="password" inputmode="numeric" autocomplete="off" maxlength="8" placeholder="••••••">
+    <button class="tombol utama kecil" id="btnMasuk">Masuk</button>
+    <p class="salah" id="masukSalah"></p>
+  </div>
+</div>
 
 <main>
   <!-- ============ ABSEN ============ -->
@@ -290,15 +323,13 @@
 
   <!-- ============ DATA ============ -->
   <section class="layar" id="layarData">
-    <div class="gembok" data-gembok="Data absen"></div>
-    <div class="terkunci">
-    <div class="pin-bar">🔓 Terbuka dengan PIN di HP ini <button class="linkbtn" data-kunci>Kunci lagi</button></div>
+    <div class="pin-bar">🔓 PIN aktif di HP ini — kontak & catatan terlihat <button class="linkbtn" data-kunci>Kunci lagi</button></div>
     <div class="bulan"><button id="blnMundur" aria-label="Bulan sebelumnya">‹</button><b id="blnJudul"></b><button id="blnMaju" aria-label="Bulan berikutnya">›</button></div>
     <div class="gulir" id="saringNama"></div>
     <div class="gulir" id="saringLap"></div>
-    <input class="isian" id="cari" placeholder="Cari team / kontak / catatan…" style="margin-bottom:6px">
+    <input class="isian" id="cari" placeholder="Cari team / lapangan…" style="margin-bottom:6px">
+    <div class="ringkas-data" id="ringkasData"></div>
     <div id="daftarData"></div>
-    </div>
   </section>
 
   <!-- ============ REKAP & EKSPOR ============ -->
@@ -327,8 +358,17 @@
         <button id="eSheet"><span class="ik" style="background:#0f9d58">GS</span><div><b>Google Sheet</b><span>buka data asli</span></div></button>
       </div>
     </div>
-    <div class="kartu"><p class="label">Per fotografer</p><table class="rekap" id="tFoto"></table></div>
-    <div class="kartu"><p class="label">Per lapangan</p><table class="rekap" id="tLap"></table></div>
+    <div class="kartu"><p class="label">Tren jam kerja</p><div class="grafik" id="gTren"></div></div>
+    <div class="kartu" id="kartuGFoto"><p class="label">Jam kerja per fotografer</p><div class="grafik" id="gFoto"></div></div>
+    <div class="kartu" id="kartuGLap"><p class="label">Jam kerja per lapangan</p><div class="grafik" id="gLap"></div></div>
+    <div class="grid-ramai" id="kartuGRamai">
+      <div class="kartu"><p class="label">Jam mulai paling ramai</p><div class="grafik" id="gJam"></div></div>
+      <div class="kartu"><p class="label">Hari paling ramai</p><div class="grafik" id="gHari"></div></div>
+    </div>
+    <details class="kartu tabel-lipat"><summary class="label">Tabel angka</summary>
+    <p class="label" style="margin-top:12px">Per fotografer</p><table class="rekap" id="tFoto"></table>
+    <p class="label" style="margin-top:16px">Per lapangan</p><table class="rekap" id="tLap"></table>
+    </details>
     </div>
   </section>
 </main>
@@ -354,12 +394,19 @@
     <button class="tombol utama kecil lipat" id="btnSimpanDaftar">Simpan daftar</button>
   </div>
   <div class="kartu">
-    <p class="label">Ganti PIN tim</p>
-    <input class="isian" id="aturPin" type="password" inputmode="numeric" autocomplete="new-password" placeholder="PIN baru (4–8 angka)">
-    <button class="tombol garis kecil lipat" id="btnGantiPin">Ganti PIN</button>
-    <p class="catatan-kecil">Setelah diganti, semua HP lain harus memasukkan PIN baru untuk membuka Data, Rekap & Pengaturan.</p>
-    <button class="tombol bahaya kecil lipat" data-kunci>Kunci HP ini (hapus PIN dari HP ini)</button>
+    <p class="label">Ganti PIN tim <span class="opsional">(untuk semua fotografer)</span></p>
+    <input class="isian" id="aturPinTim" type="password" inputmode="numeric" autocomplete="new-password" placeholder="PIN tim baru (6–8 angka)">
+    <button class="tombol garis kecil lipat" data-ganti="tim">Ganti PIN tim</button>
+    <p class="label" style="margin-top:16px">Ganti PIN admin <span class="opsional">(kontak, rekap, ekspor, pengaturan)</span></p>
+    <input class="isian" id="aturPin" type="password" inputmode="numeric" autocomplete="new-password" placeholder="PIN admin baru (6–8 angka)">
+    <button class="tombol garis kecil lipat" data-ganti="admin">Ganti PIN admin</button>
+    <p class="catatan-kecil">Setelah diganti, HP lain harus memasukkan PIN yang baru.</p>
+    <button class="tombol garis kecil lipat" data-kunci>Kunci admin di HP ini</button>
   </div>
+  </div>
+  <div class="kartu">
+    <p class="label">HP ini</p>
+    <button class="tombol bahaya kecil" id="btnKeluar">Keluar (hapus semua PIN & data dari HP ini)</button>
   </div>
   <div class="kartu">
     <p class="label">Pasang di layar HP</p>
@@ -390,6 +437,7 @@
 <script src="config.js"></script>
 <script src="api.js"></script>
 <script src="ekspor.js"></script>
+<script src="grafik.js"></script>
 <script src="banyak.js"></script>
 <script src="suara.js"></script>
 <script src="app.js"></script>

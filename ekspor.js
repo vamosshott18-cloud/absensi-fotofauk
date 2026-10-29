@@ -66,7 +66,26 @@ const EKSPOR = (() => {
         } });
       return doc.lastAutoTable.finalY + 9;
     };
+    // halaman grafik
+    const judulKecil = (t, x, yy) => { doc.setTextColor(17); doc.setFont("helvetica", "bold"); doc.setFontSize(11); doc.text(t, x, yy); };
+    const grafik = async (judul, svg, x, yy, lebarMm) => {
+      const g = await GRAFIK.keGambar(svg, 2.5, "image/jpeg"), tinggi = lebarMm * g.h / g.w;   // JPEG → PDF tetap kecil
+      if (yy + 6 + tinggi > 282) { doc.addPage(); yy = 16; }
+      judulKecil(judul, x, yy); doc.addImage(g.url, "JPEG", x, yy + 3, lebarMm, tinggi, undefined, "FAST");
+      return yy + 3 + tinggi + 8;
+    };
     let y = 63;
+    y = await grafik(`Tren jam kerja (per ${d.tren.periode})`, GRAFIK.tren(d.tren, 760, 250), 12, y, W - 24);
+    if (!d.nama) y = await grafik("Jam kerja per fotografer", GRAFIK.batang(d.perFoto, 760), 12, y, W - 24);
+    y = await grafik("Jam kerja per lapangan", GRAFIK.batang(d.perLap, 760), 12, y, W - 24);
+    const lebarSetengah = (W - 24 - 6) / 2, gj = await GRAFIK.keGambar(GRAFIK.kolom(d.jamRamai, 380, 190, "sesi"), 1);
+    if (y + 6 + lebarSetengah * gj.h / gj.w > 282) { doc.addPage(); y = 16; }
+    const yAwal = y;
+    await grafik("Jam mulai paling ramai", GRAFIK.kolom(d.jamRamai, 380, 190, "sesi"), 12, yAwal, lebarSetengah);
+    y = await grafik("Hari paling ramai (jam kerja)", GRAFIK.kolom(d.hariRamai, 380, 190, "jam"), 12 + lebarSetengah + 6, yAwal, lebarSetengah);
+
+    // tabel angka (lanjut di halaman yang sama kalau masih muat)
+    if (y > 200) { doc.addPage(); y = 16; }
     if (!d.nama) y = kecil("Rekap per fotografer", "Fotografer", d.perFoto, y);
     y = kecil("Rekap per lapangan", "Lapangan", d.perLap, y);
 
@@ -123,9 +142,15 @@ const EKSPOR = (() => {
 
   // ---------- gambar PNG ----------
   async function png(d) {
-    const W = 1080, P = 64, baris = 64, lg = await ikon();
-    const tabel = [...(!d.nama ? [["Per fotografer", d.perFoto]] : []), ["Per lapangan", d.perLap]];
-    const H = 360 + tabel.reduce((s, [, a]) => s + 110 + (a.length + 1) * baris, 0) + 70;
+    toast("Membuat gambar…");
+    const W = 1080, P = 64, lebarG = W - P * 2, lg = await ikon();
+    // grafik dirender setengah ukuran lalu diperbesar 2× → huruf tetap besar di HP
+    const daftarG = [[`Tren jam kerja (per ${d.tren.periode})`, GRAFIK.tren(d.tren, lebarG / 2, 150)],
+      ...(!d.nama ? [["Jam kerja per fotografer", GRAFIK.batang(d.perFoto, lebarG / 2)]] : []),
+      ["Jam kerja per lapangan", GRAFIK.batang(d.perLap, lebarG / 2)]];
+    const gambar = [];
+    for (const [judul, svg] of daftarG) gambar.push({ judul, g: await GRAFIK.keGambar(svg, 4) });
+    const H = 360 + gambar.reduce((t, x) => t + 64 + x.g.h * 2 + 40, 0) + 60;
     const c = document.createElement("canvas"); c.width = W; c.height = H;
     const g = c.getContext("2d"), f = (w, s) => `${w} ${s}px Arial, Helvetica, sans-serif`;
     g.fillStyle = "#f2f2f0"; g.fillRect(0, 0, W, H);
@@ -140,20 +165,11 @@ const EKSPOR = (() => {
       g.fillStyle = "#111"; g.font = f("bold", 52); g.fillText(n, x + 26, 285); g.fillStyle = "#777"; g.font = f("normal", 24); g.fillText(t, x + 26, 316);
     });
     let y = 380;
-    tabel.forEach(([judul, arr]) => {
-      g.fillStyle = "#111"; g.font = f("bold", 30); g.fillText(judul, P, y + 20);
-      y += 44; const tinggi = (arr.length + 1) * baris;
-      g.fillStyle = "#fff"; g.beginPath(); g.roundRect(P, y, W - P * 2, tinggi, 18); g.fill();
-      g.font = f("bold", 22); g.fillStyle = "#888"; g.fillText("NAMA", P + 28, y + 40); g.textAlign = "right";
-      g.fillText("SESI", W - P - 200, y + 40); g.fillText("JAM", W - P - 28, y + 40); g.textAlign = "left";
-      arr.forEach((x, i) => {
-        const yy = y + baris * (i + 1);
-        g.fillStyle = "#e6e6e1"; g.fillRect(P + 20, yy, W - P * 2 - 40, 2);
-        g.fillStyle = "#111"; g.font = f("bold", 28); g.fillText(x.nama, P + 28, yy + 42);
-        g.textAlign = "right"; g.font = f("normal", 28); g.fillText(String(x.sesi), W - P - 200, yy + 42);
-        g.font = f("bold", 28); g.fillStyle = "#e0560f"; g.fillText(angkaJam(x.jam), W - P - 28, yy + 42); g.textAlign = "left";
-      });
-      y += tinggi + 66;
+    gambar.forEach(({ judul, g: gb }) => {
+      g.fillStyle = "#fff"; g.beginPath(); g.roundRect(P - 20, y - 20, lebarG + 40, 64 + gb.h * 2 + 20, 22); g.fill();
+      g.fillStyle = "#111"; g.font = f("bold", 30); g.fillText(judul, P, y + 24);
+      g.drawImage(gb.kanvas, P, y + 44, gb.w * 2, gb.h * 2);
+      y += 64 + gb.h * 2 + 40;
     });
     g.fillStyle = "#999"; g.font = f("normal", 20); g.fillText(`Dibuat ${dicetak()} · Absensi FotoFauk`, P, H - 34);
     const blob = await new Promise(ok => c.toBlob(ok, "image/png"));

@@ -10,17 +10,17 @@ const API = (() => {
   const baca = (k, d) => { try { const v = localStorage.getItem(k); return v ? JSON.parse(v) : d; } catch (_) { return d; } };
   const tulis = (k, v) => { try { localStorage.setItem(k, JSON.stringify(v)); } catch (_) {} };
 
-  // ---- mode coba: meniru server (PIN coba = 1234), semua di localStorage ----
+  // ---- mode coba: meniru server (PIN tim coba 111111, PIN admin coba 123456), semua di localStorage ----
   function layananCoba(q) {
-    const pin = baca("af_coba_pin", "1234"), akses = String(q.pin || "") === pin;
-    if (["ubah", "hapus", "daftar", "gantiPin"].includes(q.aksi) && !akses) return { galat: "pin_salah" };
+    const pinAdmin = baca("af_coba_pin", "123456"), pinTim = baca("af_coba_pin_tim", "111111");
+    const admin = q.pin === pinAdmin, tim = admin || q.pinTim === pinTim || q.pinTim === pinAdmin;
+    if (!tim) return { galat: "pin_tim" };
+    if (["ubah", "hapus", "daftar", "gantiPin", "gantiPinTim"].includes(q.aksi) && !admin) return { galat: "pin_salah" };
     const ada = baca("af_coba_rows", []);
     const muat = () => {
       const daftar = baca("af_coba_daftar", DAFTAR_AWAL);
-      if (akses) return { ok: true, akses: true, rows: baca("af_coba_rows", []), daftar, sheetUrl: "" };
-      const batas = new Date(Date.now() - 7 * 864e5).toISOString().slice(0, 10), semua = baca("af_coba_rows", []);
-      return { ok: true, akses: false, daftar, teams: [...new Set(semua.map(r => r.team).filter(Boolean))],
-        rows: semua.filter(r => r.tanggal >= batas).map(({ kontak, catatan, dibuat, diubah, ...r }) => r) };
+      if (admin) return { ok: true, akses: true, rows: baca("af_coba_rows", []), daftar, sheetUrl: "" };
+      return { ok: true, akses: false, daftar, rows: baca("af_coba_rows", []).map(({ kontak, catatan, dibuat, diubah, ...r }) => r) };
     };
     if (q.aksi === "muat") return muat();
     if (q.aksi === "tambah") {
@@ -35,12 +35,17 @@ const API = (() => {
     }
     if (q.aksi === "hapus") { tulis("af_coba_rows", ada.filter(x => x.id !== q.id)); return muat(); }
     if (q.aksi === "daftar") { tulis("af_coba_daftar", q.daftar); return { ok: true, daftar: q.daftar }; }
-    if (q.aksi === "gantiPin") { if (!/^\d{4,8}$/.test(q.pinBaru || "")) return { galat: "PIN harus 4–8 angka" }; tulis("af_coba_pin", q.pinBaru); return { ok: true }; }
+    if (q.aksi === "gantiPin" || q.aksi === "gantiPinTim") {
+      if (!/^\d{6,8}$/.test(q.pinBaru || "")) return { galat: "PIN harus 6–8 angka" };
+      if (q.pinBaru === (q.aksi === "gantiPin" ? pinTim : pinAdmin)) return { galat: "PIN tim & PIN admin harus beda" };
+      tulis(q.aksi === "gantiPin" ? "af_coba_pin" : "af_coba_pin_tim", q.pinBaru); return { ok: true };
+    }
     return { galat: "aksi tidak dikenal" };
   }
 
   async function kirim(isi) {
     isi.pin = localStorage.getItem("af_pin") || "";
+    isi.pinTim = localStorage.getItem("af_pin_tim") || "";
     let j;
     if (MODE_COBA) j = layananCoba(JSON.parse(JSON.stringify(isi)));
     else {
@@ -73,7 +78,7 @@ const API = (() => {
     async tambah(row) {
       try { return await kirim({ aksi: "tambah", rows: [...antre(), row] }).then(j => { tulis("af_antre", []); return j; }); }
       catch (e) {
-        if (e.kode) throw e;                                          // ditolak server (mis. PIN salah) → jangan diantre
+        if (e.kode && e.kode !== "terkunci") throw e;                 // ditolak server (mis. PIN salah) → jangan diantre
         tulis("af_antre", [...antre().filter(x => x.id !== row.id), row]);
         return { ok: true, antre: true };
       }
@@ -81,7 +86,7 @@ const API = (() => {
     async tambahBanyak(rows) {
       try { return await kirim({ aksi: "tambah", rows: [...antre(), ...rows] }).then(j => { tulis("af_antre", []); return j; }); }
       catch (e) {
-        if (e.kode) throw e;
+        if (e.kode && e.kode !== "terkunci") throw e;
         const ids = new Set(rows.map(r => r.id));
         tulis("af_antre", [...antre().filter(x => !ids.has(x.id)), ...rows]);
         return { ok: true, antre: true };
@@ -91,6 +96,9 @@ const API = (() => {
     hapus: id => kirim({ aksi: "hapus", id }),
     daftar: daftar => kirim({ aksi: "daftar", daftar }),
     gantiPin: pinBaru => kirim({ aksi: "gantiPin", pinBaru }),
+    gantiPinTim: pinBaru => kirim({ aksi: "gantiPinTim", pinBaru }),
+    pasangPinTim: pin => { try { localStorage.setItem("af_pin_tim", pin); } catch (_) {} },
+    keluar: () => { try { ["af_pin_tim", "af_pin", "af_cache"].forEach(k => localStorage.removeItem(k)); } catch (_) {} },
     pasangPin: pin => { try { localStorage.setItem("af_pin", pin); } catch (_) {} },
     lepasPin: () => { try { localStorage.removeItem("af_pin"); localStorage.removeItem("af_cache"); } catch (_) {} },
     kirimAntrean,

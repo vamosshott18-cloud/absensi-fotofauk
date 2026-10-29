@@ -27,7 +27,7 @@ const S = {
   rows: [], daftar: { nama: [], lapangan: [] }, sheetUrl: "",
   saya: bacaLokal("af_saya") || "", gantiSaya: false,
   mode: bacaLokal("af_mode") === "banyak" ? "banyak" : "satu", banyak: [],
-  akses: false, teams: [],
+  akses: false, teams: [], tim: !!bacaLokal("af_pin_tim"), galat: "",
   f: { tanggal: hariIni(), jam: null, menit: 0, durasi: 1, lapangan: "", lapLain: "", team: "", kontak: "", catatan: "", jenis: "FOTO" },
   bulan: new Date(new Date().getFullYear(), new Date().getMonth(), 1),
   sNama: "", sLap: "", cari: "",
@@ -210,6 +210,9 @@ function gambarData() {
   const q = S.cari.trim().toLowerCase();
   const rows = semua().filter(r => r.tanggal >= awal && r.tanggal <= akhir && (!S.sNama || r.nama === S.sNama) && (!S.sLap || r.lapangan === S.sLap)
     && (!q || [r.team, r.kontak, r.catatan, r.nama, r.lapangan].join(" ").toLowerCase().includes(q)));
+  const jamTotal = rows.reduce((t, r) => t + r.durasi, 0);
+  $("ringkasData").innerHTML = rows.length ? `<div><b>${rows.length}</b><span>sesi</span></div><div><b>${angkaJam(jamTotal)}</b><span>jam kerja</span></div>
+    <div><b>${new Set(rows.map(r => r.lapangan)).size}</b><span>lapangan</span></div>` : "";
   if (!rows.length) { $("daftarData").innerHTML = `<div class="kosong">Belum ada absen di ${BULAN[b.getMonth()]}${S.sNama || S.sLap || q ? " untuk saringan ini" : ""}.</div>`; return; }
   const perHari = {};
   rows.forEach(r => (perHari[r.tanggal] ||= []).push(r));
@@ -239,6 +242,18 @@ function pasangData() {
 function bukaUbah(id) {
   const r = semua().find(x => x.id === id); if (!r) return;
   if (r._antre) { toast("Absen ini masih menunggu sinyal — bisa diubah setelah terkirim"); return; }
+  S.ubahId = id;
+  if (!S.akses) {                                                   // tanpa PIN: lihat saja, ubah/hapus & kontak butuh PIN
+    $("lembarUbah").innerHTML = `<h2>Absen No ${r.no} <button class="linkbtn" data-tutup="lapisUbah">Tutup</button></h2>
+      <div class="kartu">${[["Fotografer", r.nama], ["Tanggal", tglPanjang(r.tanggal)], ["Jam", `${rentangJam(r)} (${angkaJam(r.durasi)} jam)`],
+        ["Lapangan", r.lapangan], ["Team", r.team], ["Jenis", JENIS.find(j => j[0] === r.jenis)?.[1] || r.jenis]]
+        .map(([k, v]) => `<div class="detail-baris"><span>${k}</span><b>${esc(v)}</b></div>`).join("")}</div>
+      <div class="gembok-isi" style="margin-top:0"><div class="ikon">🔒</div><h3>Ubah, hapus & kontak</h3><p>Masukkan PIN tim untuk mengubah absen ini atau melihat kontak pemesan.</p>
+        <input class="isian" type="password" inputmode="numeric" autocomplete="off" maxlength="8" placeholder="••••">
+        <button class="tombol utama kecil" data-buka>Buka</button><p class="salah"></p></div>`;
+    $("lapisUbah").classList.add("tampil");
+    return;
+  }
   const opsi = (arr, v) => [...new Set([...arr, v])].map(x => `<option ${x === v ? "selected" : ""}>${esc(x)}</option>`).join("");
   $("lembarUbah").innerHTML = `<h2>Ubah absen No ${r.no} <button class="linkbtn" data-tutup="lapisUbah">Tutup</button></h2>
     <div class="kartu">
@@ -293,7 +308,43 @@ function dataRekap() {
     return Object.values(m).sort((a, b) => b.jam - a.jam || a.nama.localeCompare(b.nama));
   };
   return { dari, sampai, judul, nama: S.rNama, rows, perFoto: kelompok("nama"), perLap: kelompok("lapangan"),
-    sesi: rows.length, jam: rows.reduce((s, r) => s + r.durasi, 0), sheetUrl: S.sheetUrl };
+    sesi: rows.length, jam: rows.reduce((s, r) => s + r.durasi, 0), sheetUrl: S.sheetUrl, ...seriGrafik(rows, dari, sampai) };
+}
+// data grafik: tren per hari (per minggu kalau periodenya > 62 hari), jam ramai, hari ramai
+function seriGrafik(rows, dari, sampai) {
+  const hariKe = s => Math.round((keTanggal(s) - keTanggal(dari)) / 864e5), nHari = hariKe(sampai) + 1, perMinggu = nHari > 62;
+  const tren = [];
+  if (!perMinggu) for (let i = 0; i < nHari; i++) {
+    const d = keTanggal(dari); d.setDate(d.getDate() + i);
+    tren.push({ label: String(d.getDate()), labelPanjang: tglPanjang(iso(d)), jam: 0, sesi: 0 });
+  } else for (let i = 0; i < Math.ceil(nHari / 7); i++) {
+    const d = keTanggal(dari); d.setDate(d.getDate() + i * 7);
+    tren.push({ label: `${d.getDate()}/${d.getMonth() + 1}`, labelPanjang: `Minggu mulai ${tglPanjang(iso(d))}`, jam: 0, sesi: 0 });
+  }
+  const jamRamai = Array.from({ length: JAM_AKHIR - JAM_MULAI + 1 }, (_, i) => ({ label: pad(JAM_MULAI + i), nilai: 0 }));
+  const urutHari = [1, 2, 3, 4, 5, 6, 0], hariRamai = urutHari.map(h => ({ label: HARI[h].slice(0, 3), nilai: 0, sesi: 0 }));
+  rows.forEach(r => {
+    const t = tren[perMinggu ? Math.floor(hariKe(r.tanggal) / 7) : hariKe(r.tanggal)]; if (t) { t.jam += r.durasi; t.sesi++; }
+    const j = jamRamai[Math.floor(menitDari(r.jam) / 60) - JAM_MULAI]; if (j) j.nilai++;
+    const h = hariRamai[urutHari.indexOf(keTanggal(r.tanggal).getDay())]; h.nilai += r.durasi; h.sesi++;
+  });
+  tren.periode = perMinggu ? "minggu" : "hari";
+  jamRamai.forEach(x => x.tip = `Mulai jam ${x.label}.00\n${x.nilai} sesi`);
+  hariRamai.forEach((x, i) => x.tip = `${HARI[urutHari[i]]}\n${angkaJam(x.nilai)} jam · ${x.sesi} sesi`);
+  return { tren, jamRamai, hariRamai };
+}
+function gambarGrafik(d) {
+  const lebar = id => Math.max(300, Math.round($(id).clientWidth || 340));
+  $("gTren").innerHTML = d.rows.length ? GRAFIK.tren(d.tren, lebar("gTren"), 230) : `<p class="kosong" style="padding:20px">Belum ada data</p>`;
+  $("kartuGFoto").hidden = !!d.nama || !d.rows.length;
+  if (!$("kartuGFoto").hidden) $("gFoto").innerHTML = GRAFIK.batang(d.perFoto, lebar("gFoto"));
+  $("kartuGLap").hidden = !d.rows.length;
+  if (d.rows.length) {
+    $("gLap").innerHTML = GRAFIK.batang(d.perLap, lebar("gLap"));
+    $("gJam").innerHTML = GRAFIK.kolom(d.jamRamai, lebar("gJam"), 170, "sesi");
+    $("gHari").innerHTML = GRAFIK.kolom(d.hariRamai, lebar("gHari"), 170, "jam");
+  }
+  $("kartuGRamai").hidden = !d.rows.length;
 }
 function gambarRekap() {
   $("pilPeriode").innerHTML = [["bulan", "Bulan ini"], ["lalu", "Bulan lalu"], ["minggu", "Minggu ini"], ["pilih", "📅 Pilih tanggal"]]
@@ -307,6 +358,7 @@ function gambarRekap() {
   const tabel = (arr, kolom) => !arr.length ? `<tr><td class="kosong" style="padding:16px">Belum ada data</td></tr>` :
     `<tr><th>${kolom}</th><th class="n">Sesi</th><th class="n">Jam</th></tr>` + arr.map(x => `<tr><td>${esc(x.nama)}</td><td class="n">${x.sesi}</td><td class="n">${angkaJam(x.jam)}</td></tr>`).join("")
     + `<tr class="total"><td>Total</td><td class="n">${d.sesi}</td><td class="n">${angkaJam(d.jam)}</td></tr>`;
+  gambarGrafik(d);
   $("tFoto").innerHTML = tabel(d.perFoto, "Fotografer");
   $("tLap").innerHTML = tabel(d.perLap, "Lapangan");
   $("eSheet").hidden = !S.sheetUrl;
@@ -317,6 +369,8 @@ function pasangRekap() {
     if (b.dataset.periode) { S.periode = b.dataset.periode; gambarRekap(); }
     else if ("rnama" in b.dataset) { S.rNama = b.dataset.rnama; gambarRekap(); }
   });
+  GRAFIK.pasangTooltip($("layarRekap"));
+  let tunda; window.addEventListener("resize", () => { clearTimeout(tunda); tunda = setTimeout(() => $("layarRekap").classList.contains("aktif") && gambarRekap(), 200); });
   $("rDari").onchange = e => { S.rDari = e.target.value; gambarRekap(); };
   $("rSampai").onchange = e => { S.rSampai = e.target.value; gambarRekap(); };
   const ekspor = fn => async () => {
@@ -343,7 +397,8 @@ function bukaAtur() {
 function mintaPin() { API.lepasPin(); S.akses = false; gambarSemua(); toast("PIN tidak cocok — masukkan PIN tim lagi", 3500); }
 
 // ---- kunci PIN: Data, Rekap & Pengaturan ----
-function gambarKunci() { document.body.classList.toggle("tanpa-akses", !S.akses); }
+function gambarKunci() { document.body.classList.toggle("tanpa-akses", !S.akses); document.body.classList.toggle("belum-masuk", !S.tim); }
+const pesanGalat = k => k === "terkunci" ? "Terlalu banyak PIN salah — coba lagi 15 menit" : "PIN salah";
 function pasangKunci() {
   document.querySelectorAll(".gembok").forEach(g => {
     g.innerHTML = `<div class="gembok-isi"><div class="ikon">🔒</div><h3>${g.dataset.gembok} dikunci</h3>
@@ -357,14 +412,36 @@ function pasangKunci() {
     salah.textContent = "Mengecek…";
     API.pasangPin(pin);
     await muat();
-    if (S.akses) { inp.value = ""; salah.textContent = ""; toast("Terbuka 🔓"); }
-    else { API.lepasPin(); salah.textContent = "PIN salah"; inp.select(); }
+    if (S.akses) {
+      inp.value = ""; salah.textContent = ""; toast("Terbuka 🔓");
+      if ($("lapisUbah").classList.contains("tampil") && S.ubahId) bukaUbah(S.ubahId);
+    }
+    else { API.lepasPin(); salah.textContent = pesanGalat(S.galat); inp.select(); }
   };
   document.addEventListener("click", e => {
     const b = e.target.closest("[data-buka]"); if (b) buka(b.closest(".gembok-isi"));
     if (e.target.closest("[data-kunci]")) { API.lepasPin(); S.akses = false; $("lapisAtur").classList.remove("tampil"); toast("Dikunci 🔒"); muat(); }
   });
-  document.addEventListener("keydown", e => { if (e.key === "Enter" && e.target.closest(".gembok-isi")) buka(e.target.closest(".gembok-isi")); });
+  document.addEventListener("keydown", e => {
+    if (e.key !== "Enter") return;
+    if (e.target.id === "pinTim") masuk();
+    else if (e.target.closest(".gembok-isi")) buka(e.target.closest(".gembok-isi"));
+  });
+  // PIN tim: wajib untuk membuka aplikasi
+  const masuk = async () => {
+    const pin = $("pinTim").value.trim();
+    if (!pin) return $("pinTim").focus();
+    $("masukSalah").textContent = "Mengecek…";
+    API.pasangPinTim(pin);
+    await muat();
+    if (S.tim) { $("pinTim").value = ""; $("masukSalah").textContent = ""; toast("Selamat datang 👋"); }
+    else $("masukSalah").textContent = S.galat === "terkunci" ? pesanGalat("terkunci") : S.galat === "pin_tim" ? "PIN tim salah" : "Tidak bisa tersambung — cek internet";
+  };
+  $("btnMasuk").onclick = masuk;
+  $("btnKeluar").onclick = () => {
+    if (!confirm("Keluar dari HP ini? PIN tim & admin dihapus dari HP ini.")) return;
+    API.keluar(); S.tim = false; S.akses = false; S.rows = []; $("lapisAtur").classList.remove("tampil"); gambarSemua();
+  };
 }
 function pasangAtur() {
   $("btnAtur").onclick = bukaAtur;
@@ -377,13 +454,16 @@ function pasangAtur() {
     try { const j = await API.daftar(d); S.daftar = j.daftar; toast("Daftar tersimpan ✓"); gambarSemua(); }
     catch (e) { if (e.kode === "pin_salah") mintaPin(); else toast("Gagal: " + e.message, 4000); }
   };
-  $("btnGantiPin").onclick = async () => {
-    const baru = $("aturPin").value.trim();
-    if (!/^\d{4,8}$/.test(baru)) return toast("PIN harus 4–8 angka");
-    if (!confirm(`Ganti PIN tim jadi ${baru}? HP lain harus memasukkan PIN baru.`)) return;
-    try { await API.gantiPin(baru); API.pasangPin(baru); $("aturPin").value = ""; toast("PIN diganti ✓", 3000); }
-    catch (e) { if (e.kode === "pin_salah") mintaPin(); else toast("Gagal: " + e.message, 4000); }
-  };
+  document.querySelectorAll("[data-ganti]").forEach(b => b.onclick = async () => {
+    const tim = b.dataset.ganti === "tim", inp = $(tim ? "aturPinTim" : "aturPin"), baru = inp.value.trim();
+    if (!/^\d{6,8}$/.test(baru)) return toast("PIN harus 6–8 angka");
+    if (!confirm(`Ganti PIN ${tim ? "tim" : "admin"} jadi ${baru}? HP lain harus memasukkan PIN baru.`)) return;
+    try {
+      await (tim ? API.gantiPinTim(baru) : API.gantiPin(baru));
+      if (tim) API.pasangPinTim(baru); else API.pasangPin(baru);
+      inp.value = ""; toast(`PIN ${tim ? "tim" : "admin"} diganti ✓`, 3000);
+    } catch (e) { if (e.kode === "pin_salah") mintaPin(); else toast("Gagal: " + (e.kode === "terkunci" ? pesanGalat("terkunci") : e.message), 4000); }
+  });
 }
 
 // =================== UMUM ===================
@@ -401,9 +481,13 @@ async function muat() {
   try {
     const j = await API.muat();
     S.rows = j.rows; S.daftar = j.daftar; S.sheetUrl = j.sheetUrl || ""; S.akses = !!j.akses; S.teams = j.teams || [];
+    S.tim = true; S.galat = "";
     perbaruiStatus();
   } catch (e) {
-    if (e.kode === "pin_salah") { status("perlu PIN", "galat"); mintaPin(); }
+    S.galat = e.kode || "jaringan";
+    if (e.kode === "pin_tim") { API.keluar(); S.tim = false; S.akses = false; S.rows = []; status("perlu PIN tim", "galat"); }
+    else if (e.kode === "terkunci") status("PIN dikunci 15 mnt", "galat");
+    else if (e.kode === "pin_salah") { status("perlu PIN", "galat"); mintaPin(); }
     else status(API.simpanan() ? "offline · data terakhir" : "gagal memuat", "galat");
   }
   gambarSemua();
@@ -413,6 +497,7 @@ function pasangNav() {
     document.querySelectorAll("nav.bawah button").forEach(x => x.classList.toggle("aktif", x === b));
     document.querySelectorAll(".layar").forEach(l => l.classList.toggle("aktif", l.id === b.dataset.layar));
     window.scrollTo(0, 0);
+    if (b.dataset.layar === "layarRekap") gambarRekap();               // grafik ikut lebar layar
     if (Date.now() - terakhirMuat > 60000) muat();
   });
 }
@@ -420,7 +505,7 @@ function pasangNav() {
 (function mulai() {
   $("pitaCoba").hidden = !API.MODE_COBA;
   const c = API.simpanan();
-  if (c) { S.rows = c.rows; S.daftar = c.daftar; S.sheetUrl = c.sheetUrl; S.akses = !!c.akses && !!bacaLokal("af_pin"); S.teams = c.teams || []; }
+  if (c && S.tim) { S.rows = c.rows; S.daftar = c.daftar; S.sheetUrl = c.sheetUrl; S.akses = !!c.akses && !!bacaLokal("af_pin"); S.teams = c.teams || []; }
   pasangKunci(); BANYAK.pasang(); pasangAbsen(); SUARA.pasang(); pasangData(); pasangRekap(); pasangAtur(); pasangNav();
   gambarSemua();
   muat();

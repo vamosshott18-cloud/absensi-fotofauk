@@ -1,6 +1,6 @@
 // Service worker: simpan aplikasi supaya cepat dibuka, bisa dipasang ke layar utama & tetap terbuka saat sinyal hilang.
-const CACHE = "absen-ff-v4";
-const FILE = ["./", "index.html", "app.js", "api.js", "ekspor.js", "banyak.js", "suara.js", "config.js", "manifest.webmanifest", "ikon-192.png", "ikon-512.png"];
+const CACHE = "absen-ff-v7";
+const FILE = ["./", "index.html", "app.js", "api.js", "ekspor.js", "grafik.js", "banyak.js", "suara.js", "config.js", "manifest.webmanifest", "ikon-192.png", "ikon-512.png"];
 self.addEventListener("install", e => { e.waitUntil(caches.open(CACHE).then(c => c.addAll(FILE))); self.skipWaiting(); });
 self.addEventListener("activate", e => { e.waitUntil(caches.keys().then(k => Promise.all(k.filter(x => x !== CACHE).map(x => caches.delete(x))))); self.clients.claim(); });
 self.addEventListener("fetch", e => {

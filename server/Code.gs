@@ -1,8 +1,9 @@
 // Absensi FotoFauk — penyimpan data (Google Apps Script + Google Sheet).
 // Semua data absen ada di sheet "Absen", daftar nama & lapangan di sheet "Daftar".
-// PIN tim disimpan di Script Properties: PIN (tidak pernah ditulis di kode ini).
-// Tanpa PIN: hanya bisa ABSEN (lihat jadwal ringkas 7 hari untuk cek bentrok + nama team).
-// Dengan PIN: lihat semua data, rekap & ekspor, ubah/hapus absen, ubah pengaturan & ganti PIN.
+// Dua PIN di Script Properties (tidak pernah ditulis di kode ini):
+//   PIN_TIM — untuk semua fotografer: buka aplikasi, absen, lihat jadwal/jam kerja/lokasi.
+//   PIN     — admin: kontak & catatan, rekap & ekspor, ubah/hapus absen, pengaturan, ganti PIN.
+// Tanpa PIN tim, server menolak semuanya. PIN salah 10× dalam 15 menit → semua cek PIN ditolak 15 menit.
 const KOLOM = ["id", "no", "nama", "tanggal", "jam", "durasi", "lapangan", "team", "kontak", "catatan", "jenis", "dibuat", "diubah"];
 const DAFTAR_AWAL = {
   nama: ["FEBRI", "FAJAR", "FERDI", "NANANG", "FAUK", "FADLAN", "IKBAL", "RAJWA", "HABIL", "RIANDA", "MUJI", "IWAN", "FATHIR"],
@@ -11,22 +12,35 @@ const DAFTAR_AWAL = {
 
 function doGet() { return ContentService.createTextOutput("Absensi FotoFauk: layanan data aktif"); }
 
+const GAGAL_MAKS = 10, GAGAL_DETIK = 900;
+
 function doPost(e) {
   let out;
   const kunci = LockService.getScriptLock();
   try {
     const q = JSON.parse(e.postData.contents);
-    const pin = PropertiesService.getScriptProperties().getProperty("PIN");
-    const akses = !pin || String(q.pin || "") === pin;
-    if (["ubah", "hapus", "daftar", "gantiPin"].indexOf(q.aksi) >= 0 && !akses) out = { galat: "pin_salah" };
+    kunci.waitLock(25000);                                       // semua permintaan antre: nomor tidak dobel & tebak PIN jadi lambat
+    const prop = PropertiesService.getScriptProperties(), cache = CacheService.getScriptCache();
+    const pinAdmin = prop.getProperty("PIN"), pinTim = prop.getProperty("PIN_TIM");
+    const gagal = Number(cache.get("gagal") || 0);
+    if (gagal >= GAGAL_MAKS) out = { galat: "terkunci" };
     else {
-      kunci.waitLock(20000);                                     // dua orang simpan bersamaan → antre, nomor tidak dobel
-      if (q.aksi === "muat") out = muat(akses);
-      else if (q.aksi === "tambah") { tambah(q.rows || [q.row]); out = muat(akses); }
+      const dikirimAdmin = String(q.pin || ""), dikirimTim = String(q.pinTim || "");
+      const admin = !!pinAdmin && dikirimAdmin === pinAdmin;
+      const tim = admin || (!!pinTim && (dikirimTim === pinTim || dikirimTim === pinAdmin));
+      if ((dikirimAdmin && !admin) || (dikirimTim && !tim)) {     // ada PIN yang salah → catat & perlambat
+        cache.put("gagal", String(gagal + 1), GAGAL_DETIK);
+        Utilities.sleep(1500);
+      }
+      if (!tim) out = { galat: "pin_tim" };
+      else if (["ubah", "hapus", "daftar", "gantiPin", "gantiPinTim"].indexOf(q.aksi) >= 0 && !admin) out = { galat: "pin_salah" };
+      else if (q.aksi === "muat") out = muat(admin);
+      else if (q.aksi === "tambah") { tambah(q.rows || [q.row]); out = muat(admin); }
       else if (q.aksi === "ubah") out = ubah(q.row);
       else if (q.aksi === "hapus") out = hapus(q.id);
       else if (q.aksi === "daftar") out = simpanDaftar(q.daftar);
-      else if (q.aksi === "gantiPin") out = gantiPin(q.pinBaru);
+      else if (q.aksi === "gantiPin") out = gantiPin("PIN", q.pinBaru);
+      else if (q.aksi === "gantiPinTim") out = gantiPin("PIN_TIM", q.pinBaru);
       else out = { galat: "aksi tidak dikenal" };
     }
   } catch (err) { out = { galat: String(err) }; }
@@ -76,17 +90,16 @@ function semuaBaris() {
 function muat(akses) {
   const semua = semuaBaris();
   if (akses) return { ok: true, akses: true, rows: semua, daftar: bacaDaftar(), sheetUrl: buku().getUrl() };
-  // tanpa PIN: jadwal 7 hari terakhir (tanpa kontak/catatan) untuk cek bentrok + daftar nama team untuk saran
-  const batas = Utilities.formatDate(new Date(Date.now() - 7 * 864e5), "Asia/Jakarta", "yyyy-MM-dd");
-  const rows = semua.filter(r => String(r.tanggal) >= batas)
-    .map(r => ({ id: r.id, no: r.no, nama: r.nama, tanggal: r.tanggal, jam: r.jam, durasi: r.durasi, lapangan: r.lapangan, team: r.team, jenis: r.jenis }));
-  const teams = [...new Set(semua.map(r => String(r.team).trim()).filter(Boolean))];
-  return { ok: true, akses: false, rows: rows, teams: teams, daftar: bacaDaftar() };
+  // PIN tim saja: jadwal, jam kerja & lokasi — kontak & catatan pemesan tidak dikirim
+  const rows = semua.map(r => ({ id: r.id, no: r.no, nama: r.nama, tanggal: r.tanggal, jam: r.jam, durasi: r.durasi, lapangan: r.lapangan, team: r.team, jenis: r.jenis }));
+  return { ok: true, akses: false, rows: rows, daftar: bacaDaftar() };
 }
-function gantiPin(baru) {
+function gantiPin(nama, baru) {
   baru = String(baru || "").trim();
-  if (!/^\d{4,8}$/.test(baru)) return { galat: "PIN harus 4–8 angka" };
-  PropertiesService.getScriptProperties().setProperty("PIN", baru);
+  if (!/^\d{6,8}$/.test(baru)) return { galat: "PIN harus 6–8 angka" };
+  const p = PropertiesService.getScriptProperties();
+  if (baru === p.getProperty(nama === "PIN" ? "PIN_TIM" : "PIN")) return { galat: "PIN tim & PIN admin harus beda" };
+  p.setProperty(nama, baru);
   return { ok: true };
 }
 
@@ -130,9 +143,11 @@ function simpanDaftar(daftar) {
 // Jalankan sekali dari editor untuk membuat Sheet & memberi izin.
 function siapkan() { Logger.log(buku().getUrl()); }
 
-// Jalankan sekali dari editor: buat PIN tim acak 6 angka (kalau belum ada) lalu tampilkan di log. Ganti PIN lewat aplikasi → Pengaturan.
+// Jalankan sekali dari editor: buat PIN admin & PIN tim acak 6 angka (kalau belum ada) lalu tampilkan di log.
+// Ganti PIN lewat aplikasi → Pengaturan.
 function buatPinAwal() {
-  const p = PropertiesService.getScriptProperties();
-  if (!p.getProperty("PIN")) p.setProperty("PIN", String(Math.floor(100000 + Math.random() * 900000)));
-  Logger.log("PIN tim: " + p.getProperty("PIN"));
+  const p = PropertiesService.getScriptProperties(), acak = () => String(Math.floor(100000 + Math.random() * 900000));
+  if (!p.getProperty("PIN")) p.setProperty("PIN", acak());
+  while (!p.getProperty("PIN_TIM") || p.getProperty("PIN_TIM") === p.getProperty("PIN")) p.setProperty("PIN_TIM", acak());
+  Logger.log("PIN admin: " + p.getProperty("PIN") + " | PIN tim: " + p.getProperty("PIN_TIM"));
 }
