@@ -1,8 +1,9 @@
 // Absensi FotoFauk — penyimpan data (Google Apps Script + Google Sheet).
 // Semua data absen ada di sheet "Absen", daftar nama & lapangan di sheet "Daftar".
 // Dua PIN di Script Properties (tidak pernah ditulis di kode ini):
-//   PIN_TIM — untuk semua fotografer: buka aplikasi, absen, lihat jadwal/jam kerja/lokasi.
-//   PIN     — admin: kontak & catatan, rekap & ekspor, ubah/hapus absen, pengaturan, ganti PIN.
+//   PIN_TIM — untuk semua fotografer: buka aplikasi, absen, lihat jadwal/jam kerja/lokasi, ubah absen
+//             (tanggal, jam, durasi, lapangan, team, jenis — kontak & catatan tidak tersentuh).
+//   PIN     — admin: kontak & catatan, rekap & ekspor, ubah semua kolom, hapus absen, pengaturan, ganti PIN.
 // Tanpa PIN tim, server menolak semuanya. PIN salah 10× dalam 15 menit → semua cek PIN ditolak 15 menit.
 const KOLOM = ["id", "no", "nama", "tanggal", "jam", "durasi", "lapangan", "team", "kontak", "catatan", "jenis", "dibuat", "diubah"];
 const DAFTAR_AWAL = {
@@ -33,10 +34,10 @@ function doPost(e) {
         Utilities.sleep(1500);
       }
       if (!tim) out = { galat: "pin_tim" };
-      else if (["ubah", "hapus", "daftar", "gantiPin", "gantiPinTim"].indexOf(q.aksi) >= 0 && !admin) out = { galat: "pin_salah" };
+      else if (["hapus", "daftar", "gantiPin", "gantiPinTim"].indexOf(q.aksi) >= 0 && !admin) out = { galat: "pin_salah" };
       else if (q.aksi === "muat") out = muat(admin);
       else if (q.aksi === "tambah") { tambah(q.rows || [q.row]); out = muat(admin); }
-      else if (q.aksi === "ubah") out = ubah(q.row);
+      else if (q.aksi === "ubah") { out = ubah(q.row, admin); if (!out.galat) out = muat(admin); }
       else if (q.aksi === "hapus") out = hapus(q.id);
       else if (q.aksi === "daftar") out = simpanDaftar(q.daftar);
       else if (q.aksi === "gantiPin") out = gantiPin("PIN", q.pinBaru);
@@ -122,13 +123,17 @@ function cariBaris(id) {
   const i = ids.indexOf(id);
   return i < 0 ? -1 : i + 2;
 }
-function ubah(row) {
+// Fotografer (PIN tim) hanya boleh mengubah kolom jadwal; kontak & catatan tetap seperti semula. Admin boleh semua.
+const KOLOM_TIM = ["nama", "tanggal", "jam", "durasi", "lapangan", "team", "jenis"];
+function ubah(row, admin) {
   const b = cariBaris(row.id);
   if (b < 0) return { galat: "data tidak ditemukan" };
   const a = lembar("Absen"), lama = a.getRange(b, 1, 1, KOLOM.length).getValues()[0];
-  row.no = lama[1]; row.dibuat = lama[11]; row.diubah = new Date().toISOString();
-  a.getRange(b, 1, 1, KOLOM.length).setValues([KOLOM.map(k => row[k] ?? "")]);
-  return { ok: true, rows: semuaBaris() };
+  const baru = {}; KOLOM.forEach((k, i) => baru[k] = lama[i]);
+  (admin ? KOLOM.filter(k => ["id", "no", "dibuat", "diubah"].indexOf(k) < 0) : KOLOM_TIM).forEach(k => { if (row[k] !== undefined) baru[k] = row[k]; });
+  baru.diubah = new Date().toISOString();
+  a.getRange(b, 1, 1, KOLOM.length).setValues([KOLOM.map(k => baru[k] ?? "")]);
+  return { ok: true };
 }
 function hapus(id) {
   const b = cariBaris(id);

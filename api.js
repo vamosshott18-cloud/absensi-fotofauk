@@ -15,7 +15,7 @@ const API = (() => {
     const pinAdmin = baca("af_coba_pin", "123456"), pinTim = baca("af_coba_pin_tim", "111111");
     const admin = q.pin === pinAdmin, tim = admin || q.pinTim === pinTim || q.pinTim === pinAdmin;
     if (!tim) return { galat: "pin_tim" };
-    if (["ubah", "hapus", "daftar", "gantiPin", "gantiPinTim"].includes(q.aksi) && !admin) return { galat: "pin_salah" };
+    if (["hapus", "daftar", "gantiPin", "gantiPinTim"].includes(q.aksi) && !admin) return { galat: "pin_salah" };
     const ada = baca("af_coba_rows", []);
     const muat = () => {
       const daftar = baca("af_coba_daftar", DAFTAR_AWAL);
@@ -30,7 +30,8 @@ const API = (() => {
     }
     if (q.aksi === "ubah") {
       const i = ada.findIndex(x => x.id === q.row.id);
-      if (i >= 0) ada[i] = { ...ada[i], ...q.row, no: ada[i].no, diubah: new Date().toISOString() };
+      const boleh = admin ? Object.keys(q.row).filter(k => !["id", "no", "dibuat", "diubah"].includes(k)) : ["nama", "tanggal", "jam", "durasi", "lapangan", "team", "jenis"];
+      if (i >= 0) { boleh.forEach(k => { if (q.row[k] !== undefined) ada[i][k] = q.row[k]; }); ada[i].diubah = new Date().toISOString(); }
       tulis("af_coba_rows", ada); return muat();
     }
     if (q.aksi === "hapus") { tulis("af_coba_rows", ada.filter(x => x.id !== q.id)); return muat(); }

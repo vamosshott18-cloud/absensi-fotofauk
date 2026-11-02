@@ -243,17 +243,6 @@ function bukaUbah(id) {
   const r = semua().find(x => x.id === id); if (!r) return;
   if (r._antre) { toast("Absen ini masih menunggu sinyal — bisa diubah setelah terkirim"); return; }
   S.ubahId = id;
-  if (!S.akses) {                                                   // tanpa PIN: lihat saja, ubah/hapus & kontak butuh PIN
-    $("lembarUbah").innerHTML = `<h2>Absen No ${r.no} <button class="linkbtn" data-tutup="lapisUbah">Tutup</button></h2>
-      <div class="kartu">${[["Fotografer", r.nama], ["Tanggal", tglPanjang(r.tanggal)], ["Jam", `${rentangJam(r)} (${angkaJam(r.durasi)} jam)`],
-        ["Lapangan", r.lapangan], ["Team", r.team], ["Jenis", JENIS.find(j => j[0] === r.jenis)?.[1] || r.jenis]]
-        .map(([k, v]) => `<div class="detail-baris"><span>${k}</span><b>${esc(v)}</b></div>`).join("")}</div>
-      <div class="gembok-isi" style="margin-top:0"><div class="ikon">🔒</div><h3>Ubah, hapus & kontak</h3><p>Masukkan PIN tim untuk mengubah absen ini atau melihat kontak pemesan.</p>
-        <input class="isian" type="password" inputmode="numeric" autocomplete="off" maxlength="8" placeholder="••••">
-        <button class="tombol utama kecil" data-buka>Buka</button><p class="salah"></p></div>`;
-    $("lapisUbah").classList.add("tampil");
-    return;
-  }
   const opsi = (arr, v) => [...new Set([...arr, v])].map(x => `<option ${x === v ? "selected" : ""}>${esc(x)}</option>`).join("");
   $("lembarUbah").innerHTML = `<h2>Ubah absen No ${r.no} <button class="linkbtn" data-tutup="lapisUbah">Tutup</button></h2>
     <div class="kartu">
@@ -264,19 +253,25 @@ function bukaUbah(id) {
         <div><p class="label">Jenis</p><select class="isian" id="uJenis">${JENIS.map(([v, t]) => `<option value="${v}" ${v === r.jenis ? "selected" : ""}>${t}</option>`).join("")}</select></div></div>
       <p class="label lipat">Lapangan</p><select class="isian" id="uLap">${opsi(S.daftar.lapangan, r.lapangan)}</select>
       <p class="label lipat">Nama team</p><input class="isian" id="uTeam" value="${esc(r.team)}">
-      <p class="label lipat">Kontak</p><input class="isian" id="uKontak" value="${esc(r.kontak)}">
-      <p class="label lipat">Catatan</p><input class="isian" id="uCat" value="${esc(r.catatan)}">
+      ${S.akses ? `<p class="label lipat">Kontak</p><input class="isian" id="uKontak" value="${esc(r.kontak)}">
+      <p class="label lipat">Catatan</p><input class="isian" id="uCat" value="${esc(r.catatan)}">` : ""}
     </div>
     <button class="tombol utama" id="uSimpan">Simpan perubahan</button>
-    <button class="tombol bahaya lipat" id="uHapus">Hapus absen ini</button>
-    <p class="catatan-kecil">Diinput ${r.dibuat ? new Date(r.dibuat).toLocaleString("id-ID") : "-"}${r.diubah ? " · diubah " + new Date(r.diubah).toLocaleString("id-ID") : ""}</p>`;
+    ${S.akses ? `<button class="tombol bahaya lipat" id="uHapus">Hapus absen ini</button>` : `
+    <details class="kartu lipat" style="padding:12px 14px"><summary class="label" style="margin:0;cursor:pointer">🔒 Kontak, catatan & hapus — khusus admin</summary>
+      <div class="gembok-isi" style="border:0;padding:14px 0 4px;margin:0"><p>Masukkan PIN admin untuk melihat kontak pemesan atau menghapus absen ini.</p>
+        <input class="isian" type="password" inputmode="numeric" autocomplete="off" maxlength="8" placeholder="••••">
+        <button class="tombol utama kecil" data-buka>Buka</button><p class="salah"></p></div></details>`}
+    ${r.dibuat ? `<p class="catatan-kecil">Diinput ${new Date(r.dibuat).toLocaleString("id-ID")}${r.diubah ? " · diubah " + new Date(r.diubah).toLocaleString("id-ID") : ""}</p>` : ""}`;
   $("lapisUbah").classList.add("tampil");
   $("uSimpan").onclick = async () => {
-    const baru = { ...r, nama: $("uNama").value, tanggal: $("uTgl").value, jam: $("uJam").value, durasi: Number($("uDur").value) || r.durasi,
-      lapangan: $("uLap").value, team: $("uTeam").value.trim(), kontak: $("uKontak").value.trim(), catatan: $("uCat").value.trim(), jenis: $("uJenis").value };
+    if (!$("uTeam").value.trim()) return toast("Nama team tidak boleh kosong");
+    const baru = { id: r.id, nama: $("uNama").value, tanggal: $("uTgl").value, jam: $("uJam").value, durasi: Number($("uDur").value) || r.durasi,
+      lapangan: $("uLap").value, team: $("uTeam").value.trim(), jenis: $("uJenis").value };
+    if (S.akses) { baru.kontak = $("uKontak").value.trim(); baru.catatan = $("uCat").value.trim(); }   // fotografer tidak mengirim kontak/catatan
     await jalankan(() => API.ubah(baru), "Perubahan tersimpan ✓");
   };
-  $("uHapus").onclick = async () => {
+  if ($("uHapus")) $("uHapus").onclick = async () => {
     if (!confirm(`Hapus absen ${r.nama} · ${tglPendek(r.tanggal)} ${rentangJam(r)} · ${r.lapangan}?`)) return;
     await jalankan(() => API.hapus(r.id), "Absen dihapus");
   };
