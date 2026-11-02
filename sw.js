@@ -1,6 +1,6 @@
 // Service worker: simpan aplikasi supaya cepat dibuka, bisa dipasang ke layar utama & tetap terbuka saat sinyal hilang.
 // Selalu ambil versi terbaru dari internet (lewati cache browser); cache hanya dipakai saat offline.
-const CACHE = "absen-ff-v14";
+const CACHE = "absen-ff-v15";
 const FILE = ["./", "index.html", "app.js", "api.js", "ekspor.js", "grafik.js", "banyak.js", "suara.js", "config.js", "manifest.webmanifest", "ikon-192.png", "ikon-512.png"];
 self.addEventListener("install", e => {
   e.waitUntil(caches.open(CACHE).then(c => c.addAll(FILE.map(f => new Request(f, { cache: "reload" })))));

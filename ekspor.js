@@ -108,7 +108,16 @@ const EKSPOR = (() => {
     const det = XLSX.utils.aoa_to_sheet([["No", "Tanggal", "Jam mulai", "Jam selesai", "Durasi (jam)", "Fotografer", "Lapangan", "Team", "Jenis", "Kontak", "Catatan"],
       ...d.rows.map((r, i) => { const [m, s] = rentangJam(r).split("–"); return [i + 1, keTanggal(r.tanggal), m, s, r.durasi, r.nama, r.lapangan, r.team, jenisTeks(r.jenis), r.kontak || "", r.catatan || ""]; })],
       { cellDates: true, dateNF: "dd/mm/yyyy" });
-    det["!cols"] = [5, 12, 9, 9, 11, 12, 18, 22, 12, 22, 24].map(w => ({ wch: w }));
+    det["!cols"] = [5, 12, 9, 9, 11, 12, 18, 22, 12, 22, 24, 3, 13, 7, 12, 7].map(w => ({ wch: w }));
+    // tombol filter ▾ di baris judul: klik "Lapangan" (atau kolom lain) → pilih → hanya data itu yang tampil
+    const akhir = d.rows.length + 1;
+    det["!autofilter"] = { ref: `A1:K${akhir}` };
+    // total yang ikut berubah sesuai filter (SUBTOTAL hanya menghitung baris yang tampil)
+    det.M1 = { t: "s", v: "Sesi tampil:" };
+    det.N1 = { t: "n", f: `SUBTOTAL(103,A2:A${akhir})`, v: d.rows.length };
+    det.O1 = { t: "s", v: "Jam tampil:" };
+    det.P1 = { t: "n", f: `SUBTOTAL(109,E2:E${akhir})`, v: d.jam };
+    det["!ref"] = `A1:P${akhir}`;
     XLSX.utils.book_append_sheet(wb, det, "Rincian");
     const rek = (kolom, arr) => {
       const s = XLSX.utils.aoa_to_sheet([[kolom, "Sesi", "Jam", "Foto", "Video"], ...arr.map(x => [x.nama, x.sesi, x.jam, x.foto, x.video]), ["TOTAL", d.sesi, d.jam]]);
