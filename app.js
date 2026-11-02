@@ -507,5 +507,14 @@ function pasangNav() {
   window.addEventListener("online", muat);
   window.addEventListener("offline", perbaruiStatus);
   document.addEventListener("visibilitychange", () => { if (!document.hidden && Date.now() - terakhirMuat > 60000) muat(); });
-  if ("serviceWorker" in navigator && location.protocol === "https:") navigator.serviceWorker.register("sw.js");
+  if ("serviceWorker" in navigator && location.protocol === "https:") {
+    // ada versi baru → muat ulang sekali supaya HP langsung pakai versi terbaru
+    const adaLama = !!navigator.serviceWorker.controller;
+    let sudah = false;
+    navigator.serviceWorker.addEventListener("controllerchange", () => { if (adaLama && !sudah) { sudah = true; location.reload(); } });
+    navigator.serviceWorker.register("sw.js", { updateViaCache: "none" }).then(r => {
+      r.update();
+      document.addEventListener("visibilitychange", () => { if (!document.hidden) r.update(); });
+    });
+  }
 })();
