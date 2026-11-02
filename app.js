@@ -223,7 +223,7 @@ function gambarData() {
       `<button class="item ${r._antre ? "antre" : ""}" data-id="${esc(r.id)}">
         <div class="jam">${jamTampil(r.jam)}<small>${angkaJam(r.durasi)} jam</small></div>
         <div class="tengah"><b>${esc(r.lapangan)}</b><span>${esc(r.team)} · ${esc(JENIS.find(j => j[0] === r.jenis)?.[1] || r.jenis)}${r.kontak ? " · " + esc(r.kontak) : ""}${r._antre ? " · menunggu sinyal" : ""}</span></div>
-        <span class="siapa">${esc(r.nama)}</span></button>`).join("");
+        <span class="siapa">${esc(r.nama)}</span><span class="ubah-ik" aria-label="Ubah">✎</span></button>`).join("");
   }).join("");
 }
 function pasangData() {
