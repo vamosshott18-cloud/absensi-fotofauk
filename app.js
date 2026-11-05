@@ -253,12 +253,12 @@ function bukaUbah(id) {
         <div><p class="label">Jenis</p><select class="isian" id="uJenis">${JENIS.map(([v, t]) => `<option value="${v}" ${v === r.jenis ? "selected" : ""}>${t}</option>`).join("")}</select></div></div>
       <p class="label lipat">Lapangan</p><select class="isian" id="uLap">${opsi(S.daftar.lapangan, r.lapangan)}</select>
       <p class="label lipat">Nama team</p><input class="isian" id="uTeam" value="${esc(r.team)}">
-      ${S.akses ? `<p class="label lipat">Kontak</p><input class="isian" id="uKontak" value="${esc(r.kontak)}">
-      <p class="label lipat">Catatan</p><input class="isian" id="uCat" value="${esc(r.catatan)}">` : ""}
+      <p class="label lipat">Catatan</p><input class="isian" id="uCat" value="${esc(r.catatan)}" placeholder="mis. minta video highlight">
+      ${S.akses ? `<p class="label lipat">Kontak</p><input class="isian" id="uKontak" value="${esc(r.kontak)}">` : ""}
     </div>
     <button class="tombol utama" id="uSimpan">Simpan perubahan</button>
     ${S.akses ? `<button class="tombol bahaya lipat" id="uHapus">Hapus absen ini</button>` : `
-    <details class="kartu lipat" style="padding:12px 14px"><summary class="label" style="margin:0;cursor:pointer">🔒 Kontak, catatan & hapus — khusus admin</summary>
+    <details class="kartu lipat" style="padding:12px 14px"><summary class="label" style="margin:0;cursor:pointer">🔒 Kontak & hapus — khusus admin</summary>
       <div class="gembok-isi" style="border:0;padding:14px 0 4px;margin:0"><p>Masukkan PIN admin untuk melihat kontak pemesan atau menghapus absen ini.</p>
         <input class="isian" type="password" inputmode="numeric" autocomplete="off" maxlength="8" placeholder="••••">
         <button class="tombol utama kecil" data-buka>Buka</button><p class="salah"></p></div></details>`}
@@ -267,8 +267,8 @@ function bukaUbah(id) {
   $("uSimpan").onclick = async () => {
     if (!$("uTeam").value.trim()) return toast("Nama team tidak boleh kosong");
     const baru = { id: r.id, nama: $("uNama").value, tanggal: $("uTgl").value, jam: $("uJam").value, durasi: Number($("uDur").value) || r.durasi,
-      lapangan: $("uLap").value, team: $("uTeam").value.trim(), jenis: $("uJenis").value };
-    if (S.akses) { baru.kontak = $("uKontak").value.trim(); baru.catatan = $("uCat").value.trim(); }   // fotografer tidak mengirim kontak/catatan
+      lapangan: $("uLap").value, team: $("uTeam").value.trim(), jenis: $("uJenis").value, catatan: $("uCat").value.trim() };
+    if (S.akses) baru.kontak = $("uKontak").value.trim();   // fotografer tidak mengirim kontak
     await jalankan(() => API.ubah(baru), "Perubahan tersimpan ✓");
   };
   if ($("uHapus")) $("uHapus").onclick = async () => {

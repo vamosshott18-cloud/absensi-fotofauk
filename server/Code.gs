@@ -1,9 +1,9 @@
 // Absensi FotoFauk — penyimpan data (Google Apps Script + Google Sheet).
 // Semua data absen ada di sheet "Absen", daftar nama & lapangan di sheet "Daftar".
 // Dua PIN di Script Properties (tidak pernah ditulis di kode ini):
-//   PIN_TIM — untuk semua fotografer: buka aplikasi, absen, lihat jadwal/jam kerja/lokasi, ubah absen
-//             (tanggal, jam, durasi, lapangan, team, jenis — kontak & catatan tidak tersentuh).
-//   PIN     — admin: kontak & catatan, rekap & ekspor, ubah semua kolom, hapus absen, pengaturan, ganti PIN.
+//   PIN_TIM — untuk semua fotografer: buka aplikasi, absen, lihat jadwal/jam kerja/lokasi/catatan, ubah absen
+//             (tanggal, jam, durasi, lapangan, team, jenis, catatan — kontak tidak tersentuh).
+//   PIN     — admin: kontak, rekap & ekspor, ubah semua kolom, hapus absen, pengaturan, ganti PIN.
 // Tanpa PIN tim, server menolak semuanya. PIN salah 10× dalam 15 menit → semua cek PIN ditolak 15 menit.
 const KOLOM = ["id", "no", "nama", "tanggal", "jam", "durasi", "lapangan", "team", "kontak", "catatan", "jenis", "dibuat", "diubah"];
 const DAFTAR_AWAL = {
@@ -91,8 +91,8 @@ function semuaBaris() {
 function muat(akses) {
   const semua = semuaBaris();
   if (akses) return { ok: true, akses: true, rows: semua, daftar: bacaDaftar(), sheetUrl: buku().getUrl() };
-  // PIN tim saja: jadwal, jam kerja & lokasi — kontak & catatan pemesan tidak dikirim
-  const rows = semua.map(r => ({ id: r.id, no: r.no, nama: r.nama, tanggal: r.tanggal, jam: r.jam, durasi: r.durasi, lapangan: r.lapangan, team: r.team, jenis: r.jenis }));
+  // PIN tim saja: jadwal, jam kerja, lokasi & catatan — kontak pemesan tidak dikirim
+  const rows = semua.map(r => ({ id: r.id, no: r.no, nama: r.nama, tanggal: r.tanggal, jam: r.jam, durasi: r.durasi, lapangan: r.lapangan, team: r.team, catatan: r.catatan, jenis: r.jenis }));
   return { ok: true, akses: false, rows: rows, daftar: bacaDaftar() };
 }
 function gantiPin(nama, baru) {
@@ -123,8 +123,8 @@ function cariBaris(id) {
   const i = ids.indexOf(id);
   return i < 0 ? -1 : i + 2;
 }
-// Fotografer (PIN tim) hanya boleh mengubah kolom jadwal; kontak & catatan tetap seperti semula. Admin boleh semua.
-const KOLOM_TIM = ["nama", "tanggal", "jam", "durasi", "lapangan", "team", "jenis"];
+// Fotografer (PIN tim) boleh mengubah jadwal & catatan; kontak tetap seperti semula. Admin boleh semua.
+const KOLOM_TIM = ["nama", "tanggal", "jam", "durasi", "lapangan", "team", "jenis", "catatan"];
 function ubah(row, admin) {
   const b = cariBaris(row.id);
   if (b < 0) return { galat: "data tidak ditemukan" };

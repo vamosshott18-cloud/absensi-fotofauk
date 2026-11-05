@@ -20,7 +20,7 @@ const API = (() => {
     const muat = () => {
       const daftar = baca("af_coba_daftar", DAFTAR_AWAL);
       if (admin) return { ok: true, akses: true, rows: baca("af_coba_rows", []), daftar, sheetUrl: "" };
-      return { ok: true, akses: false, daftar, rows: baca("af_coba_rows", []).map(({ kontak, catatan, dibuat, diubah, ...r }) => r) };
+      return { ok: true, akses: false, daftar, rows: baca("af_coba_rows", []).map(({ kontak, dibuat, diubah, ...r }) => r) };
     };
     if (q.aksi === "muat") return muat();
     if (q.aksi === "tambah") {
@@ -30,7 +30,7 @@ const API = (() => {
     }
     if (q.aksi === "ubah") {
       const i = ada.findIndex(x => x.id === q.row.id);
-      const boleh = admin ? Object.keys(q.row).filter(k => !["id", "no", "dibuat", "diubah"].includes(k)) : ["nama", "tanggal", "jam", "durasi", "lapangan", "team", "jenis"];
+      const boleh = admin ? Object.keys(q.row).filter(k => !["id", "no", "dibuat", "diubah"].includes(k)) : ["nama", "tanggal", "jam", "durasi", "lapangan", "team", "jenis", "catatan"];
       if (i >= 0) { boleh.forEach(k => { if (q.row[k] !== undefined) ada[i][k] = q.row[k]; }); ada[i].diubah = new Date().toISOString(); }
       tulis("af_coba_rows", ada); return muat();
     }
